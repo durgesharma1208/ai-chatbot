@@ -1,36 +1,63 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-from groq import Groq
+# app.py
 import os
-from dotenv import load_dotenv
-
-load_dotenv()
+from flask import Flask, render_template, request, jsonify
+from google import genai
 
 app = Flask(__name__)
-CORS(app)
 
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+# Initialize Gemini client
+try:
+    client = genai.Client()
+    chat_session = client.chats.create(model="gemini-2.5-flash")
+    print("✅ Gemini client initialized successfully")
+except Exception as e:
+    print(f"❌ Failed to initialize client: {e}")
+    print("Did you set the GEMINI_API_KEY environment variable?")
+    client = None
+    chat_session = None
 
-conversation_history = []
 
-@app.route('/chat', methods=['POST'])
+@app.route("/")
+def index():
+    """Serve the chat frontend."""
+    return render_template("index.html")
+
+
+@app.route("/api/chat", methods=["POST"])
 def chat():
-    data = request.get_json()
-    user_message = data.get('message', '')
+    """Handle incoming chat messages."""
+    global chat_session
 
-    conversation_history.append({"role": "user", "content": user_message})
+    if not chat_session:
+        return jsonify({"error": "Gemini client not initialized. Check your API key."}), 500
+
+    data = request.get_json()
+    user_message = data.get("message", "").strip()
+
+    if not user_message:
+        return jsonify({"error": "Empty message"}), 400
 
     try:
-        response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=conversation_history
-        )
-        reply = response.choices[0].message.content
-        conversation_history.append({"role": "assistant", "content": reply})
-        return jsonify({"reply": reply})
+        response = chat_session.send_message(user_message)
+        return jsonify({"reply": response.text})
     except Exception as e:
-        return jsonify({"reply": f"Error: {str(e)}"}), 500
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/reset", methods=["POST"])
+def reset_chat():
+    """Reset the chat session to start a new conversation."""
+    global chat_session
+
+    if not client:
+        return jsonify({"error": "Gemini client not initialized."}), 500
+
+    try:
+        chat_session = client.chats.create(model="gemini-2.5-flash")
+        return jsonify({"status": "Chat session reset successfully"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 3000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(debug=True, port=5000)
