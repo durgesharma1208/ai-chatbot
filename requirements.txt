@@ -1,4 +1,3 @@
-flask
-flask-cors
-groq
-python-dotenv
+# requirements.txt
+flask>=3.0.0
+google-genai>=1.0.0
